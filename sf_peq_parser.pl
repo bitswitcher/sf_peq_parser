@@ -20,6 +20,10 @@ my $coef_factor = 0, my $read_size = 0, my $read_cnt = 0, my $cur_channel = 0;
 open my $fh, '<', $ARGV[0]
     or die "Cannot open '$ARGV[0]': $!";
 
+if ($start_addr > -s $fh) {
+    die "start_addr is too big compare with file size";
+}
+
 # set stream to binary mode
 binmode $fh;
 
@@ -32,7 +36,7 @@ $word = unpack("N", $buf);
 $max_read = $word * 4;
 #printf("Total word num : 0x%x\n",  $word);
 
-printf("\n---------------------- %2s -----------------------\n", $channel_str[$cur_channel++]);
+&print_ch_divider($channel_str[$cur_channel++]);
 
 # read data loop
 while ((not eof $fh) && ($read_size < $max_read)) {
@@ -54,33 +58,15 @@ while ((not eof $fh) && ($read_size < $max_read)) {
         }
 
         if (($read_cnt >= ($band_num * $peq_factor)) && (!($read_cnt % ($band_num * $peq_factor)))) {
-            printf("\n---------------------- %2s -----------------------\n", $channel_str[$cur_channel++]);
+            &print_ch_divider($channel_str[$cur_channel++]);
         }
 
         $read_size += read $fh, $buf, 4;
         $word = unpack("N", $buf);
 
-        # read Fc
-        if ($coef_factor == 0) {
-#            printf("%08x  ",  $word);
-            printf("%08x (%5d)  ",  $word, $word / (2 ** 12));
-            $coef_factor = 1;
+        &print_peq_factor($coef_factor, $read_cnt / $peq_factor);
 
-        # read Q
-        } elsif ($coef_factor == 1) {
-#            printf("%08x  ",  $word);
-            printf("%08x (%.1f)  ",  $word, $word / (2 ** 26));
-            $coef_factor = 2;
-
-        # read Gain
-        } else {
-#            printf("%08x\n",  $word);
-            if ($word <= (2 ** 31)) {
-                printf("%08x (%.1f)\n",  $word, $word / (2 ** 26));
-            } else {
-                my $tmp = $word - (2 ** 32);
-                printf("%08x (%.1f)\n",  $word, $tmp / (2 ** 26));
-            }
+        if ($coef_factor++ == 2) {
             $coef_factor = 0;
         }
     }
@@ -89,6 +75,38 @@ while ((not eof $fh) && ($read_size < $max_read)) {
 printf("\n");
 
 # close file
-close $fh
+close $fh;
 
+sub print_ch_divider {
+    my $ch = shift;
+
+    printf("\n-------------------------- %2s ---------------------------\n", $ch);
+    if ($ch ne "END") {
+        printf("         Fc                  Q                 Gain\n");
+    }
+}
+
+sub print_peq_factor {
+    my ($factor, $cnt) = @_;
+
+    # Fc
+    if ($coef_factor == 0) {
+        printf("[%2d]  ", $cnt % $band_num);
+#        printf("%08x  ",  $word);
+        printf("%08x (%5d)    ",  $word, $word / (2 ** 12));
+    # Q
+    } elsif ($coef_factor == 1) {
+#        printf("%08x  ",  $word);
+        printf("%08x (%.1f)    ",  $word, $word / (2 ** 26));
+    # Gain
+    } else {
+#        printf("%08x\n",  $word);
+        if ($word <= (2 ** 31)) {
+            printf("%08x (%.1f)\n",  $word, $word / (2 ** 26));
+        } else {
+            my $tmp = $word - (2 ** 32);
+            printf("%08x (%.1f)\n",  $word, $tmp / (2 ** 26));
+        }
+    }
+}
 
